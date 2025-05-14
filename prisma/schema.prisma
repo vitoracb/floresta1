@@ -1,0 +1,285 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// prisma/schema.prisma
+// Schema Prisma para o Aplicativo de Gerenciamento de Fazenda
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Modelo de Usuário
+// Este modelo é complementar ao Clerk, armazenando dados adicionais específicos do aplicativo
+model User {
+  id            String    @id @default(cuid())
+  clerkId       String    @unique
+  name          String
+  email         String    @unique
+  farmId        String
+  avatarUrl     String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relacionamentos
+  farm          Farm      @relation(fields: [farmId], references: [id])
+  expenses      Expense[]
+  tasks         Task[]    @relation("TaskAssignee")
+  createdTasks  Task[]    @relation("TaskCreator")
+  comments      Comment[]
+  events        Event[]   @relation("EventParticipant")
+  createdEvents Event[]   @relation("EventCreator")
+  documents     Document[] @relation("DocumentUploader")
+  payments      Payment[]
+  activities    Activity[]
+
+  @@index([farmId])
+}
+
+// Modelo para definir a fazenda
+model Farm {
+  id            String    @id @default(cuid())
+  name          String
+  address       String?
+  city          String?
+  state         String?
+  postalCode    String?
+  size          Float?    // Tamanho em hectares
+  inviteCode    String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relacionamentos
+  users         User[]
+  expenses      Expense[]
+  tasks         Task[]
+  comments      Comment[]
+  events        Event[]
+  documents     Document[]
+  cashFlows     CashFlow[]
+}
+
+// Modelo para despesas
+model Expense {
+  id            String       @id @default(cuid())
+  title         String
+  description   String?
+  amount        Float
+  date          DateTime
+  type          ExpenseType  @default(GENERAL)
+  category      String?
+  isPaid        Boolean      @default(false)
+  paymentMethod String?
+  receipt       String?      // URL para o comprovante
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  
+  // Relacionamentos
+  userId        String
+  user          User         @relation(fields: [userId], references: [id])
+  farmId        String
+  farm          Farm         @relation(fields: [farmId], references: [id])
+
+  @@index([userId])
+  @@index([farmId])
+  @@index([date])
+  @@index([type])
+}
+
+// Modelo para tarefas
+model Task {
+  id            String     @id @default(cuid())
+  title         String
+  description   String?
+  status        TaskStatus @default(TODO)
+  priority      Priority   @default(MEDIUM)
+  dueDate       DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  
+  // Relacionamentos
+  assigneeId    String?
+  assignee      User?      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  creatorId     String
+  creator       User       @relation("TaskCreator", fields: [creatorId], references: [id])
+  farmId        String
+  farm          Farm       @relation(fields: [farmId], references: [id])
+
+  @@index([assigneeId])
+  @@index([creatorId])
+  @@index([farmId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+// Modelo para eventos do calendário
+model Event {
+  id            String    @id @default(cuid())
+  title         String
+  description   String?
+  startDate     DateTime
+  endDate       DateTime
+  allDay        Boolean   @default(false)
+  location      String?
+  color         String?   // Cor para identificação visual
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relacionamentos
+  creatorId     String
+  creator       User      @relation("EventCreator", fields: [creatorId], references: [id])
+  farmId        String
+  farm          Farm      @relation(fields: [farmId], references: [id])
+  participants  User[]    @relation("EventParticipant")
+
+  @@index([creatorId])
+  @@index([farmId])
+  @@index([startDate])
+}
+
+// Modelo para documentos
+model Document {
+  id            String         @id @default(cuid())
+  title         String
+  description   String?
+  category      DocumentCategory
+  fileUrl       String
+  fileType      String
+  fileSize      Int
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  // Relacionamentos
+  uploaderId    String
+  uploader      User           @relation("DocumentUploader", fields: [uploaderId], references: [id])
+  farmId        String
+  farm          Farm           @relation(fields: [farmId], references: [id])
+
+  @@index([uploaderId])
+  @@index([farmId])
+  @@index([category])
+}
+
+// Modelo para comentários
+model Comment {
+  id            String    @id @default(cuid())
+  content       String
+  attachments   String[]  // URLs para anexos
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relacionamentos
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  farmId        String
+  farm          Farm      @relation(fields: [farmId], references: [id])
+  parentId      String?   // Para comentários aninhados/respostas
+  
+  @@index([userId])
+  @@index([farmId])
+}
+
+// Modelo para fluxo de caixa
+model CashFlow {
+  id            String        @id @default(cuid())
+  title         String
+  description   String?
+  amount        Float
+  type          TransactionType
+  date          DateTime
+  category      String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  
+  // Relacionamentos
+  farmId        String
+  farm          Farm          @relation(fields: [farmId], references: [id])
+
+  @@index([farmId])
+  @@index([date])
+  @@index([type])
+}
+
+// Modelo para pagamentos de mensalidade
+model Payment {
+  id            String    @id @default(cuid())
+  amount        Float
+  month         Int       // 1-12
+  year          Int
+  date          DateTime
+  status        PaymentStatus @default(PENDING)
+  receiptUrl    String?   // URL para comprovante
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relacionamentos
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([year, month])
+  @@index([status])
+}
+
+// Modelo para registro de atividades
+model Activity {
+  id            String    @id @default(cuid())
+  action        String
+  entityType    String    // "task", "expense", "document", etc.
+  entityId      String    // ID do objeto afetado
+  details       Json?     // Detalhes adicionais da atividade
+  createdAt     DateTime  @default(now())
+  
+  // Relacionamentos
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+enum ExpenseType {
+  GENERAL
+  MONTHLY
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum DocumentCategory {
+  DEED
+  MAP
+  CERTIFICATE
+  RECEIPT
+  OTHER
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
